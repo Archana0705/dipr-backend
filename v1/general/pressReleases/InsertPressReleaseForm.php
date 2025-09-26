@@ -12,13 +12,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception("Database connection failed.");
         }
 
-        // Get raw JSON input
-        $jsonData = file_get_contents("php://input");
-        $data = json_decode($jsonData, true); // Decode JSON into an associative array
+        // Get raw input
+        $rawInput = file_get_contents("php://input");
 
-        // Validate JSON data (Ensure all required fields are present)
+        // Decrypt incoming data
+        $data = decryptData($rawInput); // decryptData will handle JSON decoding
+
+        if (!is_array($data)) {
+            throw new Exception("Decrypted data is not valid JSON.");
+        }
+
+        // Validate required fields
         $requiredFields = [
-         
             'PRESS_FILE_NAME', 
             'UPLOADED_BY', 
             'PRESS_RELEASE_NO', 
@@ -36,18 +41,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         // Assign variables and sanitize input
-       
         $PRESS_FILE_NAME = trim($data['PRESS_FILE_NAME']);
         $UPLOADED_BY = trim($data['UPLOADED_BY']);
         $PRESS_RELEASE_NO = trim($data['PRESS_RELEASE_NO']);
         $PRESS_NAME = trim($data['PRESS_NAME']);
         $MIMETYPE = trim($data['MIMETYPE']);
-        $PR_DATE = trim($data['PR_DATE']);
-        $PR_DATE = date('Y-m-d', strtotime($PR_DATE)); 
-
+        $PR_DATE = date('Y-m-d', strtotime(trim($data['PR_DATE']))); 
         $LANGUAGE = substr(trim($data['LANGUAGE']), 0, 2); // Ensure it's within VARCHAR(2) limit
-
-        // Auto-generate current date
         $UPLOADED_DATE = date("Y-m-d H:i:s");
 
         // Validate PR_DATE format (YYYY-MM-DD)
@@ -59,31 +59,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // Prepare SQL query with placeholders
         $sql = "INSERT INTO TN_GOVT_PRESS_RELEASE (
-                               
-                                PRESS_FILE_NAME, 
-                                UPLOADED_BY, 
-                                UPLOADED_DATE, 
-                                PRESS_RELEASE_NO, 
-                                PRESS_NAME, 
-                                MIMETYPE, 
-                                PR_DATE, 
-                                LANGUAGE
-                            ) VALUES (
-                        
-                                :PRESS_FILE_NAME, 
-                                :UPLOADED_BY, 
-                                :UPLOADED_DATE, 
-                                :PRESS_RELEASE_NO, 
-                                :PRESS_NAME, 
-                                :MIMETYPE, 
-                                :PR_DATE, 
-                                :LANGUAGE
-                            )";
+                    PRESS_FILE_NAME, 
+                    UPLOADED_BY, 
+                    UPLOADED_DATE, 
+                    PRESS_RELEASE_NO, 
+                    PRESS_NAME, 
+                    MIMETYPE, 
+                    PR_DATE, 
+                    LANGUAGE
+                ) VALUES (
+                    :PRESS_FILE_NAME, 
+                    :UPLOADED_BY, 
+                    :UPLOADED_DATE, 
+                    :PRESS_RELEASE_NO, 
+                    :PRESS_NAME, 
+                    :MIMETYPE, 
+                    :PR_DATE, 
+                    :LANGUAGE
+                )";
 
         $stmt = $dipr_write_db->prepare($sql);
 
         // Bind parameters
-       
         $stmt->bindParam(':PRESS_FILE_NAME', $PRESS_FILE_NAME, PDO::PARAM_STR);
         $stmt->bindParam(':UPLOADED_BY', $UPLOADED_BY, PDO::PARAM_STR);
         $stmt->bindParam(':UPLOADED_DATE', $UPLOADED_DATE, PDO::PARAM_STR);
@@ -100,6 +97,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } else {
             throw new Exception("Failed to insert data.");
         }
+
     } catch (Exception $e) {
         error_log("Error: " . $e->getMessage());
         http_response_code(500);
