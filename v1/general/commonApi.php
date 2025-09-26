@@ -26,15 +26,113 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     exit;
 }
 
+// helper: stricter email validation (filter_var + regex)
+function is_valid_email_strict(string $email): bool {
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+    // require domain.tld (TLD at least 2 chars)
+    return (bool) preg_match('/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/', $email);
+}
+
+// helper: detect HTML/CSS/JS injection patterns in a string
+function contains_forbidden_pattern(string $value, array &$found = null): bool {
+    $found = [];
+
+    // Quick check for the simple characters you mentioned
+    if (preg_match('/[<>&\'"]/', $value)) {
+        $found[] = 'forbidden_chars_< > & \' "';
+    }
+
+    // Dangerous tags / attributes / tokens (case-insensitive)
+    $patterns = [
+        '/<\s*script\b/i'           => '<script>',
+        '/<\s*style\b/i'            => '<style>',
+        '/on\w+\s*=/i'              => 'event_handler (onclick, onerror, etc.)',
+        '/style\s*=/i'              => 'style attribute',
+        '/javascript\s*:/i'         => 'javascript: URI',
+        '/data\s*:/i'               => 'data: URI',
+        '/expression\s*\(/i'        => 'CSS expression()',
+        '/url\s*\(\s*["\']?\s*javascript\s*:/i' => 'url(javascript:...)',
+        '/<\s*iframe\b/i'           => '<iframe>',
+        '/<\s*svg\b/i'              => '<svg>',
+        '/<\s*img\b[^>]*on\w+/i'    => 'img with on* handler',
+        '/<\s*meta\b/i'             => '<meta>',
+        '/<\/\s*script\s*>/i'       => '</script>',
+    ];
+
+    foreach ($patterns as $pat => $label) {
+        if (preg_match($pat, $value)) {
+            $found[] = $label;
+        }
+    }
+
+    return !empty($found);
+}
+
+// Recursively validate all input fields (arrays allowed)
+function validate_input_recursive($data, &$badFields, $parentKey = '') {
+    if (is_array($data)) {
+        foreach ($data as $k => $v) {
+            $keyName = $parentKey === '' ? $k : ($parentKey . '.' . $k);
+            validate_input_recursive($v, $badFields, $keyName);
+        }
+        return;
+    }
+
+    // only validate strings (skip numbers, booleans, null)
+    if (!is_string($data)) {
+        return;
+    }
+
+    $value = $data;
+
+    // if field looks like an email field, validate email strictly
+    if (preg_match('/email|email_id|emailid/i', $parentKey)) {
+        if (!is_valid_email_strict($value)) {
+            $badFields[$parentKey][] = 'invalid_email';
+            return;
+        }
+    }
+
+    // perform forbidden pattern checks
+    $found = [];
+    if (contains_forbidden_pattern($value, $found)) {
+        $badFields[$parentKey] = $found;
+    }
+}
+
+// read input (json preferred; fallback to $_POST)
 $jsonData = file_get_contents("php://input");
 $data = json_decode($jsonData, true) ?? $_POST;
 
+// Validate required action/table early
 if (empty($data['action']) || empty($data['table'])) {
     http_response_code(400);
     echo json_encode(["success" => 0, "message" => "Action and table name are required"]);
     exit;
 }
 
+// Run backend HTML/CSS/JS-injection validation on incoming data
+$badFields = [];
+validate_input_recursive($data, $badFields);
+
+if (!empty($badFields)) {
+    // Build clear error message with offending fields + reasons
+    $messages = [];
+    foreach ($badFields as $field => $reasons) {
+        $messages[] = "$field: " . implode(', ', (array)$reasons);
+    }
+    http_response_code(400);
+    echo json_encode([
+        "success" => 0,
+        "message" => "Invalid input detected (possible HTML/CSS/JS injection or invalid email).",
+        "details" => $messages
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// everything else: existing flow
 $action = trim($data['action']);
 $table  = $data['table'];
 $primaryKey = $data['primary_key'] ?? 'slno';
@@ -43,6 +141,15 @@ switch ($action) {
     case 'fetch':
         $filters = $data['filters'] ?? [];
         $columns = $data['columns'] ?? '*';
+
+        // Whitelist columns if $columns is provided as string; if user provides "*", it's fine.
+        // BE CAUTIOUS: interpolating $columns directly can be risky; better provide columns as array in client
+        if ($columns !== '*' && is_array($columns)) {
+            $columns = implode(", ", array_map(function($c){ return preg_replace('/[^A-Za-z0-9_.*, ]/','', $c); }, $columns));
+        } elseif ($columns !== '*') {
+            // sanitize string (allow only letters, numbers, commas, spaces, dots and underscore)
+            $columns = preg_replace('/[^A-Za-z0-9_,.*\s]/', '', $columns);
+        }
 
         $sql = "SELECT $columns FROM $table";
         if (!empty($filters)) {

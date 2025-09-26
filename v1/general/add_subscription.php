@@ -9,18 +9,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $user_name = trim($_POST['user_name'] ?? '');
     $email = trim($_POST['email_id'] ?? '');
 
+    // -----------------------
+    // Validation
+    // -----------------------
     if (empty($user_name) || empty($email)) {
         http_response_code(400);
         echo json_encode(["success" => 0, "message" => "Both 'user_name' and 'email_id' are required."]);
         exit;
     }
 
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    // Stronger email validation
+    if (
+        !filter_var($email, FILTER_VALIDATE_EMAIL) ||
+        !preg_match('/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/', $email)
+    ) {
         http_response_code(400);
         echo json_encode(["success" => 0, "message" => "Invalid email format."]);
         exit;
     }
 
+    // Lowercase for consistency
     $email = strtolower($email); 
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
@@ -29,8 +37,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception("Database connection error.");
         }
 
-        $limit = 2;          
-        $window = 3600;     
+        // -----------------------
+        // Rate limiting (per email)
+        // -----------------------
+        $limit = 2;          // max attempts
+        $window = 3600;      // 1 hour
         $cacheDir = sys_get_temp_dir() . "/rate_limit";
         if (!file_exists($cacheDir)) {
             mkdir($cacheDir, 0777, true);
@@ -81,7 +92,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             exit;
         }
 
+        // -----------------------
         // Insert new subscription
+        // -----------------------
         $sql = "INSERT INTO govt_subscription (name, email, created_on, is_subscribe) 
                 VALUES (:name, :email, CURRENT_TIMESTAMP, 'Yes')";
         $stmt = $dipr_write_db->prepare($sql);

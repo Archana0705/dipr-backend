@@ -6,22 +6,68 @@ require_once('../../helper/db/dipr_read.php');
 header("Access-Control-Allow-Methods: POST");
 header("Content-Type: application/json");
 
-// ini_set('upload_max_filesize', '100M');
-// ini_set('post_max_size', '110M');
-// ini_set('memory_limit', '256M');
-// ini_set('max_execution_time', '300');
-// ini_set('max_input_time', '300');
+// ----------------------
+// Helper: detect forbidden patterns (HTML/CSS/JS injection)
+// ----------------------
+function containsForbiddenPattern($value, &$found = null) {
+    $found = [];
+    if (preg_match('/[<>&\'"]/', $value)) {
+        $found[] = 'forbidden characters < > & \' "';
+    }
+    $patterns = [
+        '/<\s*script\b/i'           => '<script>',
+        '/<\s*style\b/i'            => '<style>',
+        '/on\w+\s*=/i'              => 'event_handler (onclick, onerror, etc.)',
+        '/style\s*=/i'              => 'style attribute',
+        '/javascript\s*:/i'         => 'javascript: URI',
+        '/data\s*:/i'               => 'data: URI',
+        '/expression\s*\(/i'        => 'CSS expression()',
+        '/url\s*\(\s*["\']?\s*javascript\s*:/i' => 'url(javascript:...)',
+        '/<\s*iframe\b/i'           => '<iframe>',
+        '/<\s*svg\b/i'              => '<svg>',
+        '/<\s*img\b[^>]*on\w+/i'    => 'img with on* handler',
+        '/<\s*meta\b/i'             => '<meta>',
+        '/<\/\s*script\s*>/i'       => '</script>',
+    ];
+    foreach ($patterns as $pat => $desc) {
+        if (preg_match($pat, $value)) {
+            $found[] = $desc;
+        }
+    }
+    return !empty($found);
+}
 
+// ----------------------
+// Recursive validation for all input fields
+// ----------------------
+function validateInputRecursive($data, &$badFields, $parentKey = '') {
+    if (is_array($data)) {
+        foreach ($data as $k => $v) {
+            $keyName = $parentKey === '' ? $k : ($parentKey . '.' . $k);
+            validateInputRecursive($v, $badFields, $keyName);
+        }
+        return;
+    }
 
+    if (!is_string($data)) return;
 
-// print_r($_REQUEST);
-// print_r($_GET);
-// Read JSON input
+    $value = $data;
+    $found = [];
+    if (containsForbiddenPattern($value, $found)) {
+        $badFields[$parentKey] = $found;
+    }
+}
+
+// ----------------------
+// Read input
+// ----------------------
 $jsonData = file_get_contents("php://input");
-$data = json_decode($jsonData, true) ?? $_POST ;
+$data = json_decode($jsonData, true) ?? $_POST;
 
-// Determine action
-$action = $data['action']  ?? null;
+// ----------------------
+// Check action
+// ----------------------
+$action = $data['action'] ?? null;
 $table = "TN_MONUMENTS";
 $primaryKey = "slno";
 
@@ -31,6 +77,28 @@ if (!$action) {
     exit;
 }
 
+// ----------------------
+// Validate all input fields for HTML/CSS injection
+// ----------------------
+$badFields = [];
+validateInputRecursive($data, $badFields);
+if (!empty($badFields)) {
+    $messages = [];
+    foreach ($badFields as $field => $reasons) {
+        $messages[] = "$field: " . implode(', ', (array)$reasons);
+    }
+    http_response_code(400);
+    echo json_encode([
+        "success" => 0,
+        "message" => "Invalid input detected (possible HTML/CSS/JS injection).",
+        "details" => $messages
+    ]);
+    exit;
+}
+
+// ----------------------
+// CRUD Logic
+// ----------------------
 switch ($action) {
     case 'fetch':
         $sql = "SELECT * FROM $table";
@@ -46,18 +114,12 @@ switch ($action) {
         break;
 
     case 'insert':
-     
-
-    
         $response = uploadFile($_FILES["video_attachment_name"], "uploads/videos/monuments/");
-        
-        // Move uploaded file
-        if (!$response['success']==1) {
+        if (!$response['success']) {
             echo json_encode(["success" => 0, "message" => "File upload failed."]);
             exit;
         }
 
-        // Insert into database
         $sql = "INSERT INTO $table (MONUMENTS, PLACE, CREATED_BY, CREATED_ON, UPDATED_BY, UPDATED_ON, DISTRICT, VIDEO_NAME, VIDEO_ATTACHMENT_NAME, MIME_TYPE, LANGUAGE)
                 VALUES (:monuments, :place, :created_by, NOW(), :updated_by, NOW(), :district, :video_name, :video_attachment_name, :mime_type, :language)";
 
@@ -81,7 +143,7 @@ switch ($action) {
             }
         } catch (Exception $e) {
             http_response_code(500);
-            echo json_encode(["success" => 0, "message" => "Internal server error","error" => $e->getMessage() ]);// Print actual error]);
+            echo json_encode(["success" => 0, "message" => "Internal server error", "error" => $e->getMessage()]);
         }
         break;
 

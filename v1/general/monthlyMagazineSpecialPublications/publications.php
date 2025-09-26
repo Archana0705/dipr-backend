@@ -5,28 +5,96 @@ require_once('../../../helper/db/dipr_read.php');
 header("Access-Control-Allow-Methods: POST");
 header("Content-Type: application/json");
 
-// Read JSON input
-$jsonData = file_get_contents("php://input");
-$data = json_decode($jsonData, true);
+// ----------------------
+// Helper: Detect forbidden patterns (HTML/CSS/JS injection)
+// ----------------------
+function containsForbiddenPattern($value, &$found = null) {
+    $found = [];
+    if (preg_match('/[<>&\'"]/', $value)) {
+        $found[] = 'forbidden characters < > & \' "';
+    }
+    $patterns = [
+        '/<\s*script\b/i'           => '<script>',
+        '/<\s*style\b/i'            => '<style>',
+        '/on\w+\s*=/i'              => 'event_handler (onclick, onerror, etc.)',
+        '/style\s*=/i'              => 'style attribute',
+        '/javascript\s*:/i'         => 'javascript: URI',
+        '/data\s*:/i'               => 'data: URI',
+        '/expression\s*\(/i'        => 'CSS expression()',
+        '/url\s*\(\s*["\']?\s*javascript\s*:/i' => 'url(javascript:...)',
+        '/<\s*iframe\b/i'           => '<iframe>',
+        '/<\s*svg\b/i'              => '<svg>',
+        '/<\s*img\b[^>]*on\w+/i'    => 'img with on* handler',
+        '/<\s*meta\b/i'             => '<meta>',
+        '/<\/\s*script\s*>/i'       => '</script>',
+    ];
+    foreach ($patterns as $pat => $desc) {
+        if (preg_match($pat, $value)) {
+            $found[] = $desc;
+        }
+    }
+    return !empty($found);
+}
 
-// Check if 'action' is provided
+// ----------------------
+// Validate all input recursively
+// ----------------------
+function validateInputRecursive($data, &$badFields, $parentKey = '') {
+    if (is_array($data)) {
+        foreach ($data as $k => $v) {
+            $keyName = $parentKey === '' ? $k : ($parentKey . '.' . $k);
+            validateInputRecursive($v, $badFields, $keyName);
+        }
+        return;
+    }
+    if (!is_string($data)) return;
+
+    $value = $data;
+    $found = [];
+    if (containsForbiddenPattern($value, $found)) {
+        $badFields[$parentKey] = $found;
+    }
+}
+
+// ----------------------
+// Read input
+// ----------------------
+$jsonData = file_get_contents("php://input");
+$data = json_decode($jsonData, true) ?? $_POST;
+
+// Validate input
+$badFields = [];
+validateInputRecursive($data, $badFields);
+if (!empty($badFields)) {
+    $messages = [];
+    foreach ($badFields as $field => $reasons) {
+        $messages[] = "$field: " . implode(', ', (array)$reasons);
+    }
+    http_response_code(400);
+    echo json_encode([
+        "success" => 0,
+        "message" => "Invalid input detected (possible HTML/CSS/JS injection).",
+        "details" => $messages
+    ]);
+    exit;
+}
+
+// Check action
 if (empty($data['action'])) {
     http_response_code(400);
     echo json_encode(["success" => 0, "message" => "Action is required"]);
     exit;
 }
 
-$action = $data['action'];
+$action = strtolower($data['action']);
 
 switch ($action) {
     case 'fetch':
-        // Fetch all records
         $sql = "SELECT SLNO, FILE_NAME, MIME_TYPE, FILENAME, CREATED_ON, CREATED_BY, UPDATED_ON, UPDATED_BY, LANGUAGE FROM TN_PUBLICATIONS";
         try {
             $stmt = $dipr_read_db->prepare($sql);
             $stmt->execute();
             $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
             echo json_encode(["success" => 1, "data" => $result], JSON_UNESCAPED_UNICODE);
         } catch (Exception $e) {
             error_log("Error fetching data: " . $e->getMessage());
@@ -36,7 +104,6 @@ switch ($action) {
         break;
 
     case 'insert':
-        // Insert a new record
         if (empty($data['file_name']) || empty($data['mime_type']) || empty($data['filename']) || empty($data['language'])) {
             http_response_code(400);
             echo json_encode(["success" => 0, "message" => "Required fields are missing"]);
@@ -55,12 +122,10 @@ switch ($action) {
             $stmt->bindValue(':p_UPDATED_BY', $data['updated_by'] ?? 'admin', PDO::PARAM_STR);
             $stmt->bindValue(':p_LANGUAGE', $data['language'], PDO::PARAM_STR);
 
-
             if ($stmt->execute()) {
                 http_response_code(201);
                 echo json_encode(["success" => 1, "message" => "Data inserted successfully"]);
             } else {
-                error_log("Execution failed: " . print_r($stmt->errorInfo(), true));
                 http_response_code(500);
                 echo json_encode(["success" => 0, "message" => "Database execution failed"]);
             }
@@ -72,7 +137,6 @@ switch ($action) {
         break;
 
     case 'update':
-        // Update an existing record
         if (empty($data['slno']) || empty($data['file_name']) || empty($data['mime_type']) || empty($data['filename']) || empty($data['language'])) {
             http_response_code(400);
             echo json_encode(["success" => 0, "message" => "Required fields are missing"]);
@@ -91,19 +155,16 @@ switch ($action) {
         try {
             $stmt = $dipr_read_db->prepare($sql);
             $stmt->bindParam(':p_SLNO', $data['slno'], PDO::PARAM_INT);
-
             $stmt->bindValue(':p_FILE_NAME', $data['file_name'], PDO::PARAM_STR);
             $stmt->bindValue(':p_MIME_TYPE', $data['mime_type'], PDO::PARAM_STR);
             $stmt->bindValue(':p_FILENAME', $data['filename'], PDO::PARAM_STR);
-            $stmt->bindValue(':p_UPDATED_BY', $data['updated_by'], PDO::PARAM_STR);
+            $stmt->bindValue(':p_UPDATED_BY', $data['updated_by'] ?? 'admin', PDO::PARAM_STR);
             $stmt->bindValue(':p_LANGUAGE', $data['language'], PDO::PARAM_STR);
-
 
             if ($stmt->execute()) {
                 http_response_code(200);
                 echo json_encode(["success" => 1, "message" => "Data updated successfully"]);
             } else {
-                error_log("Execution failed: " . print_r($stmt->errorInfo(), true));
                 http_response_code(500);
                 echo json_encode(["success" => 0, "message" => "Database execution failed"]);
             }
@@ -115,7 +176,6 @@ switch ($action) {
         break;
 
     case 'delete':
-        // Delete a record
         if (empty($data['slno'])) {
             http_response_code(400);
             echo json_encode(["success" => 0, "message" => "SLNO is required"]);
@@ -132,7 +192,6 @@ switch ($action) {
                 http_response_code(200);
                 echo json_encode(["success" => 1, "message" => "Data deleted successfully"]);
             } else {
-                error_log("Execution failed: " . print_r($stmt->errorInfo(), true));
                 http_response_code(500);
                 echo json_encode(["success" => 0, "message" => "Database execution failed"]);
             }

@@ -5,8 +5,61 @@ require_once('../../helper/db/dipr_read.php');
 header("Access-Control-Allow-Methods: POST");
 header("Content-Type: application/json");
 
-$jsonData = file_get_contents("php://input");
-//$data = json_decode($jsonData, true) || $_POST['data'] ;
+// ----------------------
+// Helper: Detect forbidden patterns (HTML/CSS/JS injection)
+// ----------------------
+function containsForbiddenPattern($value, &$found = null) {
+    $found = [];
+    if (preg_match('/[<>&\'"]/', $value)) {
+        $found[] = 'forbidden characters < > & \' "';
+    }
+    $patterns = [
+        '/<\s*script\b/i'           => '<script>',
+        '/<\s*style\b/i'            => '<style>',
+        '/on\w+\s*=/i'              => 'event_handler (onclick, onerror, etc.)',
+        '/style\s*=/i'              => 'style attribute',
+        '/javascript\s*:/i'         => 'javascript: URI',
+        '/data\s*:/i'               => 'data: URI',
+        '/expression\s*\(/i'        => 'CSS expression()',
+        '/url\s*\(\s*["\']?\s*javascript\s*:/i' => 'url(javascript:...)',
+        '/<\s*iframe\b/i'           => '<iframe>',
+        '/<\s*svg\b/i'              => '<svg>',
+        '/<\s*img\b[^>]*on\w+/i'    => 'img with on* handler',
+        '/<\s*meta\b/i'             => '<meta>',
+        '/<\/\s*script\s*>/i'       => '</script>',
+    ];
+    foreach ($patterns as $pat => $desc) {
+        if (preg_match($pat, $value)) {
+            $found[] = $desc;
+        }
+    }
+    return !empty($found);
+}
+
+// ----------------------
+// Recursive validation for all input fields
+// ----------------------
+function validateInputRecursive($data, &$badFields, $parentKey = '') {
+    if (is_array($data)) {
+        foreach ($data as $k => $v) {
+            $keyName = $parentKey === '' ? $k : ($parentKey . '.' . $k);
+            validateInputRecursive($v, $badFields, $keyName);
+        }
+        return;
+    }
+
+    if (!is_string($data)) return;
+
+    $value = $data;
+    $found = [];
+    if (containsForbiddenPattern($value, $found)) {
+        $badFields[$parentKey] = $found;
+    }
+}
+
+// ----------------------
+// Read input
+// ----------------------
 $data = json_decode(file_get_contents("php://input"), true) ?? $_POST;
 
 if (empty($data['action'])) {
@@ -15,6 +68,28 @@ if (empty($data['action'])) {
     exit;
 }
 
+// ----------------------
+// Validate input to prevent injection
+// ----------------------
+$badFields = [];
+validateInputRecursive($data, $badFields);
+if (!empty($badFields)) {
+    $messages = [];
+    foreach ($badFields as $field => $reasons) {
+        $messages[] = "$field: " . implode(', ', (array)$reasons);
+    }
+    http_response_code(400);
+    echo json_encode([
+        "success" => 0,
+        "message" => "Invalid input detected (possible HTML/CSS/JS injection).",
+        "details" => $messages
+    ]);
+    exit;
+}
+
+// ----------------------
+// CRUD logic
+// ----------------------
 $action = $data['action'];
 $table = "TN_MEMORIALS";
 $primaryKey = "slno";
@@ -33,7 +108,7 @@ switch ($action) {
             echo json_encode(["success" => 0, "message" => "Internal server error"]);
         }
         break;
-    
+
     case 'insert':
         $sql = "INSERT INTO $table (MEMORIAL, PLACE, CREATED_BY, CREATED_ON, UPDATED_BY, UPDATED_ON, DISTRICT, VIDEO_NAME, MIME_TYPE, VIDEO_ATTACHMENT_NAME, LANGUAGE)
                 VALUES (:p_MEMORIAL, :p_PLACE, :p_CREATED_BY, NOW(), :p_UPDATED_BY, NOW(), :p_DISTRICT, :p_VIDEO_NAME, :p_MIME_TYPE, :p_VIDEO_ATTACHMENT_NAME, :p_LANGUAGE)";
@@ -63,7 +138,7 @@ switch ($action) {
             echo json_encode(["success" => 0, "message" => "Internal server error"]);
         }
         break;
-    
+
     case 'update':
         if (empty($data[$primaryKey])) {
             http_response_code(400);
@@ -97,7 +172,7 @@ switch ($action) {
             echo json_encode(["success" => 0, "message" => "Internal server error"]);
         }
         break;
-    
+
     case 'delete':
         if (empty($data[$primaryKey])) {
             http_response_code(400);
@@ -108,20 +183,16 @@ switch ($action) {
         try {
             $stmt = $dipr_read_db->prepare($sql);
             $stmt->bindValue(':p_SLNO', $data[$primaryKey], PDO::PARAM_INT);
-            if ($stmt->execute()) {
-                http_response_code(200);
-                echo json_encode(["success" => 1, "message" => "Data deleted successfully"]);
-            } else {
-                http_response_code(500);
-                echo json_encode(["success" => 0, "message" => "Database execution failed"]);
-            }
+            $stmt->execute();
+            http_response_code(200);
+            echo json_encode(["success" => 1, "message" => "Data deleted successfully"]);
         } catch (Exception $e) {
             error_log("Error deleting data: " . $e->getMessage());
             http_response_code(500);
             echo json_encode(["success" => 0, "message" => "Internal server error"]);
         }
         break;
-    
+
     default:
         http_response_code(400);
         echo json_encode(["success" => 0, "message" => "Invalid action"]);
