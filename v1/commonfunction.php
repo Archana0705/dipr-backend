@@ -1,0 +1,334 @@
+<?php
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+session_start();
+
+require_once('../helper/header.php');
+require_once('../helper/db/dipr_read.php');
+
+header("Access-Control-Allow-Methods: POST");
+header("Content-Type: application/json");
+
+// ==========================
+// Error Handling Helper
+// ==========================
+function respondServerError($message = "Internal server error", $httpCode = 500, $exception = null) {
+    if ($exception instanceof Exception) {
+        error_log("DB ERROR: " . $exception->getMessage());
+    }
+    http_response_code($httpCode);
+    echo json_encode(["success" => 0, "message" => $message]);
+    exit;
+}
+
+// ==========================
+// Read Input
+// ==========================
+$jsonData = file_get_contents("php://input");
+$json_data = json_decode($jsonData, true);
+if (!$json_data && !empty($_POST)) {
+    $json_data = $_POST;
+}
+
+$encryptedData = $json_data['data'] ?? null;
+if (!$encryptedData) {
+    http_response_code(400);
+    echo json_encode(["success" => 0, "message" => "Missing encrypted data"]);
+    exit;
+}
+
+$data = decryptData($encryptedData);
+if (empty($data['action'])) {
+    http_response_code(400);
+    echo json_encode(["success" => 0, "message" => "Action is required"]);
+    exit;
+}
+
+// ==========================
+// Common variables
+// ==========================
+$action = $data['action'] ?? null;
+$limit = isset($data['limit']) && $data['limit'] !== null ? max(1, (int)$data['limit']) : null;
+$offset = $limit !== null ? (isset($data['offset']) ? max(0, (int)$data['offset']) : 0) : null;
+$search = $data['search'] ?? null;
+$search_key = $data['search_key'] ?? null;
+
+switch ($action) {
+    case 'function_call':
+        $functionName = $data['function_name'] ?? null;
+        $params = $data['params'] ?? [];
+        $columns = $data['columns'] ?? '*';
+
+        if (!$functionName) {
+            http_response_code(400);
+            echo json_encode(["success" => 0, "message" => "Function name is required"]);
+            exit;
+        }
+
+        // --------------------------
+        // Logout handler
+        // --------------------------
+        if ($functionName === 'user_logout') {
+            $userId = $data['params']['user_id'] ?? null;
+            if (!$userId) {
+                http_response_code(400);
+                echo json_encode(["success" => 0, "message" => "Missing user ID"]);
+                exit;
+            }
+
+            try {
+                $stmt = $dipr_read_db->prepare("DELETE FROM user_sessions WHERE user_id = :uid");
+                $stmt->execute([':uid' => $userId]);
+
+                $_SESSION = [];
+                session_destroy();
+
+                echo json_encode(["success" => 1, "message" => "Logged out successfully"]);
+            } catch (Exception $e) {
+                respondServerError("Logout failed", 500, $e);
+            }
+            exit;
+        }
+
+        // --------------------------
+        // Rate limit setup for login
+        // --------------------------
+        $scalarFunctions = ['user_login_fn', 'forget_password_fn'];
+        $isLoginFn = ($functionName === 'user_login_fn');
+
+        if ($isLoginFn) {
+            // configure attempts & lockout
+            $maxAttempts = 2;      // adjust as needed
+            $lockoutTime = 300;    // seconds
+
+            if (!isset($_SESSION['login_attempts'])) {
+                $_SESSION['login_attempts'] = 0;
+                $_SESSION['lockout_time'] = 0;
+            }
+
+            // if previously locked out and still inside lockout window
+            if ($_SESSION['login_attempts'] >= $maxAttempts) {
+                if ((time() - (int)$_SESSION['lockout_time']) < $lockoutTime) {
+                    http_response_code(429);
+                    $failData = [['result' => false]];
+                    echo json_encode([
+                        "success" => 0,
+                        "message" => "Too many failed login attempts. Please try again later.",
+                        "data" => encrypt($failData)
+                    ]);
+                    exit;
+                } else {
+                    // lockout expired, reset
+                    $_SESSION['login_attempts'] = 0;
+                    $_SESSION['lockout_time'] = 0;
+                }
+            }
+        }
+
+        // sanitize function name
+        $functionName = preg_replace('/[^a-zA-Z0-9_]/', '', $functionName);
+
+        // build SQL
+        $placeholders = '';
+        if (!empty($params)) {
+            $placeholders = implode(', ', array_map(fn($k) => ':' . $k, array_keys($params)));
+        }
+        if (in_array($functionName, $scalarFunctions)) {
+            $sql = "SELECT $functionName($placeholders) as result";
+        } else {
+            $sql = "SELECT $columns FROM $functionName($placeholders)";
+        }
+
+        try {
+            $response = ["success" => 1];
+            $bindParams = $params;
+
+            if (!in_array($functionName, $scalarFunctions)) {
+                $whereConditions = [];
+                if ($search !== null && $search_key !== null) {
+                    $safe_search_key = preg_replace('/[^a-zA-Z0-9_]/', '', $search_key);
+                    $whereConditions[] = "$safe_search_key LIKE :search";
+                    $bindParams['search'] = "%" . $search . "%";
+                }
+                if (!empty($whereConditions)) {
+                    $sql .= " WHERE " . implode(' AND ', $whereConditions);
+                }
+            }
+
+            if (!in_array($functionName, $scalarFunctions) && $limit !== null) {
+                $sql .= " LIMIT :limit OFFSET :offset";
+                $bindParams['limit'] = $limit;
+                $bindParams['offset'] = $offset;
+            }
+
+            $stmt = $dipr_read_db->prepare($sql);
+            foreach ($bindParams as $key => $value) {
+                $paramType = is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR;
+                $stmt->bindValue(":$key", $value, $paramType);
+            }
+            $stmt->execute();
+            $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // --------------------------
+            // Special handling for login (scalar function)
+            // --------------------------
+            if (in_array($functionName, $scalarFunctions) && $functionName === 'user_login_fn') {
+                // Determine whether login succeeded:
+                // Acceptable success: $result[0]['result'] is JSON string containing user object with user_id,
+                // or it could be boolean true (string 'true') — handle both.
+                $raw = $result[0]['result'] ?? null;
+                $loginResult = null;
+                if ($raw !== null) {
+                    // try decode
+                    $decoded = json_decode($raw, true);
+                    if (is_array($decoded)) {
+                        $loginResult = $decoded;
+                    } else {
+                        // handle plain 'true'/'false' or other formats
+                        if ($raw === 'true' || $raw === true) {
+                            // weird case — treat as success but missing user_id -> fail
+                            $loginResult = null;
+                        } elseif ($raw === 'false' || $raw === false) {
+                            $loginResult = null;
+                        } else {
+                            // maybe DB returned quoted JSON string (double encoded). try second decode:
+                            $double = json_decode($raw, true);
+                            if (is_array($double)) {
+                                $loginResult = $double;
+                            } else {
+                                $loginResult = null;
+                            }
+                        }
+                    }
+                }
+
+                // If loginResult is not an array with user_id -> treat as failed login attempt
+                $isSuccess = is_array($loginResult) && !empty($loginResult['user_id']);
+
+                if (!$isSuccess) {
+                    // increment attempts and possibly set lockout
+                    if (!isset($maxAttempts)) { $maxAttempts = 2; $lockoutTime = 300; }
+                    $_SESSION['login_attempts'] = ($_SESSION['login_attempts'] ?? 0) + 1;
+                    if ($_SESSION['login_attempts'] >= $maxAttempts) {
+                        $_SESSION['lockout_time'] = time();
+                    }
+
+                    http_response_code(401);
+                    $failData = [['result' => false]];
+                    echo json_encode([
+                        "success" => 0,
+                        "message" => "Invalid credentials. Attempt {$_SESSION['login_attempts']} of {$maxAttempts}",
+                        "data" => encrypt($failData)
+                    ]);
+                    exit;
+                }
+
+                // at this point loginResult must contain user_id
+                $currentSessionId = session_id();
+                $userId = $loginResult['user_id'];
+
+                if (!$userId) {
+                    // treat as failed attempt (safer than returning Missing user ID immediately)
+                    $_SESSION['login_attempts'] = ($_SESSION['login_attempts'] ?? 0) + 1;
+                    if ($_SESSION['login_attempts'] >= $maxAttempts) {
+                        $_SESSION['lockout_time'] = time();
+                    }
+                    http_response_code(401);
+                    $failData = [['result' => false]];
+                    echo json_encode([
+                        "success" => 0,
+                        "message" => "Invalid credentials. Attempt {$_SESSION['login_attempts']} of {$maxAttempts}",
+                        "data" => encrypt($failData)
+                    ]);
+                    exit;
+                }
+
+                // Prevent multiple sessions for same user
+                $stmtCheck = $dipr_read_db->prepare("SELECT session_id FROM user_sessions WHERE user_id = :uid");
+                $stmtCheck->execute([':uid' => $userId]);
+                $existingSession = $stmtCheck->fetchColumn();
+
+                if ($existingSession && $existingSession !== $currentSessionId) {
+                    http_response_code(403);
+                    $failData = [['result' => false]];
+                    echo json_encode([
+                        "success" => 0,
+                        "message" => "User already logged in from another device/browser.",
+                        "data" => encrypt($failData)
+                    ]);
+                    exit;
+                }
+
+                // Save/update session record
+                $stmtInsert = $dipr_read_db->prepare("
+                    INSERT INTO user_sessions (user_id, session_id, last_active)
+                    VALUES (:uid, :sid, NOW())
+                    ON CONFLICT (user_id) DO UPDATE 
+                    SET session_id = EXCLUDED.session_id,
+                        last_active = EXCLUDED.last_active
+                ");
+                $stmtInsert->execute([
+                    ':uid' => $userId,
+                    ':sid' => $currentSessionId
+                ]);
+
+                // success — reset attempts
+                $_SESSION['login_attempts'] = 0;
+                $_SESSION['lockout_time'] = 0;
+                $_SESSION['user_role'] = $loginResult['role'] ?? '';
+                $_SESSION['user_district'] = $loginResult['district'] ?? '';
+                $_SESSION['user_name'] = $loginResult['user_name'] ?? '';
+
+                echo json_encode([
+                    "success" => 1,
+                    "message" => "Login successful",
+                    "data" => encrypt([$loginResult])
+                ]);
+                exit;
+            }
+
+            // --------------------------
+            // Non-scalar functions (normal queries)
+            // --------------------------
+            if (!in_array($functionName, $scalarFunctions)) {
+                $response["data"] = encrypt($result);
+
+                if ($limit !== null) {
+                    // count total rows (best-effort; may not work for all DB functions)
+                    $countSql = "SELECT COUNT(*) as total FROM $functionName($placeholders)";
+                    $countStmt = $dipr_read_db->prepare($countSql);
+                    foreach ($params as $key => $value) {
+                        $paramType = is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR;
+                        $countStmt->bindValue(":$key", $value, $paramType);
+                    }
+                    $countStmt->execute();
+                    $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+                    $response["pagination"] = [
+                        "total" => (int)$totalCount,
+                        "limit" => $limit,
+                        "offset" => $offset,
+                        "total_pages" => ceil($totalCount / $limit),
+                        "current_page" => floor($offset / $limit) + 1
+                    ];
+                }
+
+                if (empty($result)) {
+                    $response["success"] = 0;
+                    $response["message"] = "Data not found";
+                }
+
+                echo json_encode($response);
+                exit;
+            }
+
+        } catch (Exception $e) {
+            respondServerError("Request failed", 500, $e);
+        }
+        break;
+
+    default:
+        http_response_code(400);
+        echo json_encode(["success" => 0, "message" => "Invalid action"]);
+}
