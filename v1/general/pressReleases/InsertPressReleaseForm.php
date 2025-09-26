@@ -113,7 +113,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt->bindParam(':LANGUAGE', $LANGUAGE, PDO::PARAM_STR);
 
         if ($stmt->execute()) {
-            http_response_code(201);
+            http_response_code(200);
             echo json_encode([
                 "success" => 1, 
                 "message" => "Data inserted successfully.",
