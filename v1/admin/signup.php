@@ -19,18 +19,40 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         // Assign variables
-        $USERNAME = strtoupper(trim($data['USERNAME']));
-   
-        $PASSWORD = password_hash(trim($data['PASSWORD']), PASSWORD_BCRYPT); // Hash password
-        $EMAIL_ID = trim($data['EMAIL_ID']);
+        $USERNAME   = strtoupper(trim($data['USERNAME']));
+        $PASSWORD   = password_hash(trim($data['PASSWORD']), PASSWORD_BCRYPT); // Hash password
+        $EMAIL_ID   = strtolower(trim($data['EMAIL_ID']));
         $CREATED_BY = trim($data['CREATED_BY']);
         $CREATED_ON = date("Y-m-d H:i:s"); // Auto-generate timestamp
         $UPDATED_BY = isset($data['UPDATED_BY']) ? trim($data['UPDATED_BY']) : NULL;
         $UPDATED_ON = isset($data['UPDATED_ON']) ? trim($data['UPDATED_ON']) : NULL;
-        $ROLE = trim($data['ROLE']);
-        $DISTRICT = trim($data['DISTRICT']);
+        $ROLE       = trim($data['ROLE']);
+        $DISTRICT   = trim($data['DISTRICT']);
 
+        // -----------------------
+        // Email Validation
+        // -----------------------
+        if (
+            !filter_var($EMAIL_ID, FILTER_VALIDATE_EMAIL) || 
+            !preg_match('/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/', $EMAIL_ID)
+        ) {
+            http_response_code(400);
+            echo json_encode(["success" => 0, "message" => "Invalid email format."]);
+            exit;
+        }
+
+        // Optional: Block disposable/fake email domains
+        $disposableDomains = ["tempmail.com", "10minutemail.com", "mailinator.com"];
+        $domain = substr(strrchr($EMAIL_ID, "@"), 1);
+        if (in_array(strtolower($domain), $disposableDomains)) {
+            http_response_code(400);
+            echo json_encode(["success" => 0, "message" => "Disposable email addresses are not allowed."]);
+            exit;
+        }
+
+        // -----------------------
         // SQL Query with placeholders
+        // -----------------------
         $sql = "INSERT INTO USER_LIST (USERNAME, PASSWORD, EMAIL_ID, CREATED_BY, CREATED_ON, 
                                        UPDATED_BY, UPDATED_ON, ROLE, DISTRICT) 
                 VALUES (:USERNAME, :PASSWORD, :EMAIL_ID, :CREATED_BY, :CREATED_ON, 
@@ -60,7 +82,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } catch (Exception $e) {
         error_log("Error: " . $e->getMessage());
         http_response_code(500);
-        echo json_encode(["success" => 0, "message" => "Server error." ,'error' =>  $e->getMessage()]);
+        echo json_encode(["success" => 0, "message" => "Server error.", 'error' => $e->getMessage()]);
     }
 } else {
     http_response_code(405);
