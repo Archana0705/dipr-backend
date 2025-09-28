@@ -69,7 +69,9 @@ try {
 
     $jsonData = file_get_contents("php://input");
     $data = json_decode($jsonData, true) ?? $_POST;
-
+    if (isset($data['data'])) {
+        $data = decryptData($data['data']);
+    }
     if (!isset($data['action'])) {
         http_response_code(400);
         echo json_encode(["success" => 0, "message" => "Missing action."]);

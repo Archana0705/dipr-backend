@@ -105,7 +105,9 @@ function validate_input_recursive($data, &$badFields, $parentKey = '') {
 // read input (json preferred; fallback to $_POST)
 $jsonData = file_get_contents("php://input");
 $data = json_decode($jsonData, true) ?? $_POST;
-
+if (isset($data['data'])) {
+    $data = decryptData($data['data']);
+}
 // Validate required action/table early
 if (empty($data['action']) || empty($data['table'])) {
     http_response_code(400);
@@ -142,12 +144,9 @@ switch ($action) {
         $filters = $data['filters'] ?? [];
         $columns = $data['columns'] ?? '*';
 
-        // Whitelist columns if $columns is provided as string; if user provides "*", it's fine.
-        // BE CAUTIOUS: interpolating $columns directly can be risky; better provide columns as array in client
         if ($columns !== '*' && is_array($columns)) {
             $columns = implode(", ", array_map(function($c){ return preg_replace('/[^A-Za-z0-9_.*, ]/','', $c); }, $columns));
         } elseif ($columns !== '*') {
-            // sanitize string (allow only letters, numbers, commas, spaces, dots and underscore)
             $columns = preg_replace('/[^A-Za-z0-9_,.*\s]/', '', $columns);
         }
 
@@ -178,7 +177,17 @@ switch ($action) {
         if (!is_dir($targetDir)) {
             mkdir($targetDir, 0755, true);
         }
+        if (!empty($data['ATTACHMENT_NAME'])) {
+                $fileContent = base64_decode($data['ATTACHMENT_NAME']);
+                $fileName = $data['PRESS_NOTE_NAME'] ?? 'file_' . time();
+                $targetFilePath = $targetDir . $fileName;
 
+                if (file_put_contents($targetFilePath, $fileContent) === false) {
+                    respondServerError("Failed to save uploaded file");
+                }
+        
+                $data['ATTACHMENT_NAME'] = $targetFilePath;
+            }
         if (!empty($_FILES["file"])) {
             $fileName = basename($_FILES["file"]["name"]);
             $targetFilePath = $targetDir . $fileName;
