@@ -54,7 +54,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } else {
             error_log("Execution failed: " . print_r($stmt->errorInfo(), true));
             http_response_code(500);
-            echo json_encode(["success" => 0, "message" => "Database execution failed"]);
+           // echo json_encode(["success" => 0, "message" => "Database execution failed"]);
         }
     } catch (Exception $e) {
         error_log("Error: " . $e->getMessage());

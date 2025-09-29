@@ -14,7 +14,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // -----------------------
     if (empty($user_name) || empty($email)) {
         http_response_code(400);
-        echo json_encode(["success" => 0, "message" => "Both 'user_name' and 'email_id' are required."]);
+        echo json_encode(["success" => 0, "message" => "All fields are required."]);
         exit;
     }
 

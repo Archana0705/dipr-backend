@@ -56,7 +56,7 @@ if ($_SERVER["REQUEST_METHOD"] ==  "POST") {
                 echo json_encode(["success" => 1, "message" => "Record updated successfully."]);
             } else {
                 http_response_code(404); // HTTP 404 Not Found
-                echo json_encode(["success" => 0, "message" => "No record found with the given SLNO."]);
+                echo json_encode(["success" => 0, "message" => "No record found"]);
             }
         } else {
             throw new Exception("Failed to update record.");

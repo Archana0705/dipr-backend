@@ -132,7 +132,7 @@ switch (trim($action)) {
                 echo json_encode(["success" => 1, "message" => "Data inserted successfully"]);
             } else {
                 http_response_code(500);
-                echo json_encode(["success" => 0, "message" => "Database execution failed"]);
+                //echo json_encode(["success" => 0, "message" => "Database execution failed"]);
             }
         } catch (Exception $e) {
             http_response_code(500);
@@ -236,13 +236,13 @@ switch (trim($action)) {
                 
                 error_log("Database error: " . $e->getMessage());
                 http_response_code(500);
-                echo json_encode(["success" => 0, "message" => "Database error.", "error"=>$e->getMessage()]);
+                echo json_encode(["success" => 0, "message" => "Error.", "error"=>$e->getMessage()]);
             }
             break;
     case 'delete':
         if (empty($data[$primaryKey])) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "Primary key is required"]);
+            //echo json_encode(["success" => 0, "message" => "Primary key is required"]);
             exit;
         }
 
@@ -256,7 +256,7 @@ switch (trim($action)) {
                 echo json_encode(["success" => 1, "message" => "Data deleted successfully"]);
             } else {
                 http_response_code(500);
-                echo json_encode(["success" => 0, "message" => "Database execution failed"]);
+                //echo json_encode(["success" => 0, "message" => "Database execution failed"]);
             }
         } catch (Exception $e) {
             http_response_code(500);

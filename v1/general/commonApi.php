@@ -317,7 +317,7 @@ switch ($action) {
     case 'delete':
         if (empty($data[$primaryKey])) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "Primary key is required"]);
+           // echo json_encode(["success" => 0, "message" => "Primary key is required"]);
             exit;
         }
 
@@ -339,5 +339,5 @@ switch ($action) {
  
     default:
         http_response_code(400);
-        echo json_encode(["success" => 0, "message" => "Invalid action"]);
+       // echo json_encode(["success" => 0, "message" => "Invalid action"]);
 }

@@ -17,7 +17,7 @@ $data = json_decode($jsonData, true);
 // Validate input fields
 if (!isset($data['user_name']) || !isset($data['password']) || empty(trim($data['user_name'])) || empty(trim($data['password']))) {
     http_response_code(400);
-    echo json_encode(["success" => 0, "message" => "Username and password are required."]);
+    echo json_encode(["success" => 0, "message" => "All fields are required."]);
     exit;
 }
 

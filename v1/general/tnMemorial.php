@@ -64,7 +64,7 @@ $data = json_decode(file_get_contents("php://input"), true) ?? $_POST;
 
 if (empty($data['action'])) {
     http_response_code(400);
-    echo json_encode(["success" => 0, "message" => "Action is required"]);
+ //   echo json_encode(["success" => 0, "message" => "Action is required"]);
     exit;
 }
 
@@ -130,7 +130,7 @@ switch ($action) {
                 echo json_encode(["success" => 1, "message" => "Data inserted successfully"]);
             } else {
                 http_response_code(500);
-                echo json_encode(["success" => 0, "message" => "Database execution failed"]);
+            //    echo json_encode(["success" => 0, "message" => "Database execution failed"]);
             }
         } catch (Exception $e) {
             error_log("Error inserting data: " . $e->getMessage());
@@ -142,7 +142,7 @@ switch ($action) {
     case 'update':
         if (empty($data[$primaryKey])) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "$primaryKey is required"]);
+          //  echo json_encode(["success" => 0, "message" => "$primaryKey is required"]);
             exit;
         }
         $sql = "UPDATE $table SET MEMORIAL = :p_MEMORIAL, PLACE = :p_PLACE, UPDATED_BY = :p_UPDATED_BY, UPDATED_ON = NOW(), DISTRICT = :p_DISTRICT, VIDEO_NAME = :p_VIDEO_NAME, MIME_TYPE = :p_MIME_TYPE, VIDEO_ATTACHMENT_NAME = :p_VIDEO_ATTACHMENT_NAME, LANGUAGE = :p_LANGUAGE WHERE $primaryKey = :p_SLNO";
@@ -164,7 +164,7 @@ switch ($action) {
                 echo json_encode(["success" => 1, "message" => "Data updated successfully"]);
             } else {
                 http_response_code(500);
-                echo json_encode(["success" => 0, "message" => "Database execution failed"]);
+             //   echo json_encode(["success" => 0, "message" => "Database execution failed"]);
             }
         } catch (Exception $e) {
             error_log("Error updating data: " . $e->getMessage());
@@ -176,7 +176,7 @@ switch ($action) {
     case 'delete':
         if (empty($data[$primaryKey])) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "$primaryKey is required"]);
+         //   echo json_encode(["success" => 0, "message" => "$primaryKey is required"]);
             exit;
         }
         $sql = "DELETE FROM $table WHERE $primaryKey = :p_SLNO";

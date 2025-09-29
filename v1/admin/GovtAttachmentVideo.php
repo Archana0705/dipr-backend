@@ -74,7 +74,7 @@ try {
     }
     if (!isset($data['action'])) {
         http_response_code(400);
-        echo json_encode(["success" => 0, "message" => "Missing action."]);
+        //echo json_encode(["success" => 0, "message" => "Missing action."]);
         exit;
     }
 
@@ -145,7 +145,7 @@ try {
         case 'delete':
             if (empty($data['id'])) {
                 http_response_code(400);
-                echo json_encode(["success" => 0, "message" => "Missing ID for delete."]);
+               // echo json_encode(["success" => 0, "message" => "Missing ID for delete."]);
                 exit;
             }
             $sql = "DELETE FROM govt_attachment_video WHERE id = :id";
@@ -161,7 +161,7 @@ try {
         case 'update':
             if (!isset($data['id'], $data['V_NAME'], $data['V_DESC'], $data['V_URL'], $data['LANGUAGE'])) {
                 http_response_code(400);
-                echo json_encode(["success" => 0, "message" => "All fields including ID are required."]);
+                echo json_encode(["success" => 0, "message" => "All fields are required."]);
                 exit;
             }
 
@@ -196,7 +196,7 @@ try {
 
         default:
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "Invalid action."]);
+            //echo json_encode(["success" => 0, "message" => "Invalid action."]);
     }
 
 } catch (Exception $e) {

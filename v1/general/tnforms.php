@@ -62,7 +62,7 @@ $data = json_decode($jsonData, true);
 
 if (empty($data['action'])) {
     http_response_code(400);
-    echo json_encode(["success" => 0, "message" => "Action is required"]);
+  //  echo json_encode(["success" => 0, "message" => "Action is required"]);
     exit;
 }
 
@@ -127,7 +127,7 @@ switch ($action) {
     case 'update':
         if (empty($data[$primaryKey])) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "$primaryKey is required"]);
+        //    echo json_encode(["success" => 0, "message" => "$primaryKey is required"]);
             exit;
         }
         $sql = "UPDATE $table SET FORM_NAME = :p_FORM_NAME, ATTACHMENT_NAME = :p_ATTACHMENT_NAME, UPLOADED_BY = :p_UPLOADED_BY, UPLOADED_ON = NOW(), MIME_TYPE = :p_MIME_TYPE, LANGUAGE = :p_LANGUAGE WHERE $primaryKey = :p_ID";
@@ -153,7 +153,7 @@ switch ($action) {
     case 'delete':
         if (empty($data[$primaryKey])) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "$primaryKey is required"]);
+          //  echo json_encode(["success" => 0, "message" => "$primaryKey is required"]);
             exit;
         }
         $sql = "DELETE FROM $table WHERE $primaryKey = :p_ID";

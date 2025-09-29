@@ -84,7 +84,7 @@ if (!empty($badFields)) {
 // ----------------------
 if (empty($data['action'])) {
     http_response_code(400);
-    echo json_encode(["success" => 0, "message" => "Action is required"]);
+  //  echo json_encode(["success" => 0, "message" => "Action is required"]);
     exit;
 }
 
@@ -127,7 +127,7 @@ switch ($action) {
                 echo json_encode(["success" => 1, "message" => "Data inserted successfully"]);
             } else {
                 http_response_code(500);
-                echo json_encode(["success" => 0, "message" => "Database execution failed"]);
+             //   echo json_encode(["success" => 0, "message" => "Database execution failed"]);
             }
         } catch (Exception $e) {
             error_log("Error inserting data: " . $e->getMessage());
@@ -159,7 +159,7 @@ switch ($action) {
                 echo json_encode(["success" => 1, "message" => "Data updated successfully"]);
             } else {
                 http_response_code(500);
-                echo json_encode(["success" => 0, "message" => "Database execution failed"]);
+           //     echo json_encode(["success" => 0, "message" => "Database execution failed"]);
             }
         } catch (Exception $e) {
             error_log("Error updating data: " . $e->getMessage());
@@ -171,7 +171,7 @@ switch ($action) {
     case 'delete':
         if (empty($data['slno'])) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "SLNO is required"]);
+          //  echo json_encode(["success" => 0, "message" => "SLNO is required"]);
             exit;
         }
 
@@ -185,7 +185,7 @@ switch ($action) {
                 echo json_encode(["success" => 1, "message" => "Data deleted successfully"]);
             } else {
                 http_response_code(500);
-                echo json_encode(["success" => 0, "message" => "Database execution failed"]);
+              //  echo json_encode(["success" => 0, "message" => "Database execution failed"]);
             }
         } catch (Exception $e) {
             error_log("Error deleting data: " . $e->getMessage());

@@ -11,7 +11,7 @@ $data = json_decode($jsonData, true);
 
 if (empty($data['action']) ) {
     http_response_code(400);
-    echo json_encode(["success" => 0, "message" => "Invalid action or module"]);
+    //echo json_encode(["success" => 0, "message" => "Invalid action or module"]);
     exit;
 }
 
@@ -62,7 +62,7 @@ switch ($action) {
     case 'update':
         if (empty($data[$primaryKey])) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "SLNO is required"]);
+            //echo json_encode(["success" => 0, "message" => "SLNO is required"]);
             exit;
         }
         $sql = "UPDATE $table SET MONUMENTS = :monuments, PLACE = :place, UPDATED_BY = :updated_by, UPDATED_ON = NOW(), DISTRICT = :district, VIDEO_NAME = :video_name, VIDEO_ATTACHMENT_NAME = :video_attachment_name, MIME_TYPE = :mime_type, LANGUAGE = :language WHERE $primaryKey = :slno";
@@ -92,7 +92,7 @@ switch ($action) {
     case 'delete':
         if (empty($data[$primaryKey])) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "SLNO is required"]);
+           // echo json_encode(["success" => 0, "message" => "SLNO is required"]);
             exit;
         }
         $sql = "DELETE FROM $table WHERE $primaryKey = :slno";

@@ -18,7 +18,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Validate JSON data (Ensure required field is present)
         if (!isset($data['SLNO'])) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "Invalid input. SLNO is required."]);
+           // echo json_encode(["success" => 0, "message" => "Invalid input. SLNO is required."]);
             exit;
         }
 
@@ -40,7 +40,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 echo json_encode(["success" => 1, "message" => "Record deleted successfully."]);
             } else {
                 http_response_code(404); // HTTP 404 Not Found
-                echo json_encode(["success" => 0, "message" => "No record found with the given SLNO."]);
+                //echo json_encode(["success" => 0, "message" => "No record found with the given SLNO."]);
             }
         } else {
             throw new Exception("Failed to delete record.");

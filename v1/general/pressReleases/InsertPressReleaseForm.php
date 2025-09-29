@@ -34,7 +34,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         foreach ($requiredFields as $field) {
             if (!isset($data[$field])) {
                 http_response_code(400);
-                echo json_encode(["success" => 0, "message" => "Invalid input. Missing field: $field"]);
+                echo json_encode(["success" => 0, "message" => "Invalid input. Missing fields"]);
                 exit;
             }
         }
@@ -52,7 +52,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Validate PR_DATE
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $PR_DATE)) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "Invalid date format for PR_DATE. Expected YYYY-MM-DD."]);
+            echo json_encode(["success" => 0, "message" => "Invalid date format"]);
             exit;
         }
 
