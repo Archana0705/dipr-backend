@@ -6,3 +6,7 @@ RewriteRule ^([^.?]+)$ %{REQUEST_URI}.php [L]
 # Return 404 if original request is /foo/bar.php
 RewriteCond %{THE_REQUEST} "^[^ ]* .*?\.php[? ].*$"
 RewriteRule .* - [L,R=404]
+# Disable X-Powered-By header
+<IfModule mod_headers.c>
+    Header unset X-Powered-By
+</IfModule>

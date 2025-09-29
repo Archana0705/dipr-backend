@@ -21,7 +21,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Stronger email validation
     if (
         !filter_var($email, FILTER_VALIDATE_EMAIL) ||
-        !preg_match('/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/', $email)
+        !preg_match('/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/', $email)
     ) {
         http_response_code(400);
         echo json_encode(["success" => 0, "message" => "Invalid email format."]);
@@ -31,7 +31,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Lowercase for consistency
     $email = strtolower($email); 
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+$allowed_domains = [
+        'gmail.com',       // Gmail
+        'googlemail.com',  // legacy Gmail alias
+        'hotmail.com',     // Hotmail
+        'outlook.com',     // Microsoft
+        'live.com'         // Microsoft
+    ];
 
+    // Extract domain
+    $atPos = strrpos($email, '@');
+    if ($atPos === false) {
+        http_response_code(400);
+        echo json_encode(["success" => 0, "message" => "Invalid email address."]);
+        exit;
+    }
+    $domain = substr($email, $atPos + 1);
+
+    if (!in_array($domain, $allowed_domains, true)) {
+        http_response_code(400);
+        echo json_encode([
+            "success" => 0,
+            "message" => "Only Gmail and Hotmail (Microsoft) email addresses are allowed."
+        ]);
+        exit;
+    }
     try {
         if (!$dipr_write_db) {
             throw new Exception("Database connection error.");

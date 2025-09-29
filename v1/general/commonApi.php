@@ -25,30 +25,13 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     ]);
     exit;
 }
-
-// helper: stricter email validation (filter_var + regex)
-function is_valid_email_strict(string $email): bool {
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        return false;
-    }
-    // require domain.tld (TLD at least 2 chars)
-    return (bool) preg_match('/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/', $email);
-}
-
-// helper: detect HTML/CSS/JS injection patterns in a string
 function contains_forbidden_pattern(string $value, array &$found = null): bool {
     $found = [];
-
-    // Quick check for the simple characters you mentioned
-    if (preg_match('/[<>&\'"]/', $value)) {
-        $found[] = 'forbidden_chars_< > & \' "';
-    }
-
-    // Dangerous tags / attributes / tokens (case-insensitive)
+    if (preg_match('/[<>&\'"]/', $value)) $found[] = 'forbidden_chars_< > & \' "';
     $patterns = [
         '/<\s*script\b/i'           => '<script>',
         '/<\s*style\b/i'            => '<style>',
-        '/on\w+\s*=/i'              => 'event_handler (onclick, onerror, etc.)',
+        '/on\w+\s*=/i'              => 'event_handler',
         '/style\s*=/i'              => 'style attribute',
         '/javascript\s*:/i'         => 'javascript: URI',
         '/data\s*:/i'               => 'data: URI',
@@ -60,47 +43,46 @@ function contains_forbidden_pattern(string $value, array &$found = null): bool {
         '/<\s*meta\b/i'             => '<meta>',
         '/<\/\s*script\s*>/i'       => '</script>',
     ];
-
     foreach ($patterns as $pat => $label) {
-        if (preg_match($pat, $value)) {
-            $found[] = $label;
-        }
+        if (preg_match($pat, $value)) $found[] = $label;
     }
-
     return !empty($found);
 }
-
-// Recursively validate all input fields (arrays allowed)
-function validate_input_recursive($data, &$badFields, $parentKey = '') {
+function validateFields($data, &$errors = [], $parentKey = '') {
     if (is_array($data)) {
         foreach ($data as $k => $v) {
             $keyName = $parentKey === '' ? $k : ($parentKey . '.' . $k);
-            validate_input_recursive($v, $badFields, $keyName);
+            validateFields($v, $errors, $keyName);
         }
         return;
     }
-
-    // only validate strings (skip numbers, booleans, null)
-    if (!is_string($data)) {
-        return;
-    }
-
+    if (!is_string($data)) return;
     $value = $data;
 
-    // if field looks like an email field, validate email strictly
+    // Email check
     if (preg_match('/email|email_id|emailid/i', $parentKey)) {
-        if (!is_valid_email_strict($value)) {
-            $badFields[$parentKey][] = 'invalid_email';
-            return;
-        }
+        if (!filter_var($value, FILTER_VALIDATE_EMAIL)) $errors[$parentKey][] = 'Invalid email';
     }
 
-    // perform forbidden pattern checks
+    // Forbidden patterns
     $found = [];
-    if (contains_forbidden_pattern($value, $found)) {
-        $badFields[$parentKey] = $found;
+    if (contains_forbidden_pattern($value, $found)) $errors[$parentKey] = $found;
+}
+function validateCommonFields($data, &$errors = []) {
+    foreach ($data as $key => $val) {
+        if (stripos($key, 'phone') !== false) {
+            if (!is_int($val) || strlen((string)$val) !== 10) {
+                $errors[$key][] = 'Must be an integer of 10 digits';
+            }
+        }
+         if (stripos($key, 'sequence') !== false) {
+            if (!is_int($val) || $val < 1) {
+                $errors[$key][] = 'Must be integer ≥ 1';
+            }
+        }
     }
 }
+
 
 // read input (json preferred; fallback to $_POST)
 $jsonData = file_get_contents("php://input");
@@ -108,28 +90,22 @@ $data = json_decode($jsonData, true) ?? $_POST;
 if (isset($data['data'])) {
     $data = decryptData($data['data']);
 }
+
 // Validate required action/table early
 if (empty($data['action']) || empty($data['table'])) {
     http_response_code(400);
     echo json_encode(["success" => 0, "message" => "Action and table name are required"]);
     exit;
 }
-
-// Run backend HTML/CSS/JS-injection validation on incoming data
-$badFields = [];
-validate_input_recursive($data, $badFields);
-
-if (!empty($badFields)) {
-    // Build clear error message with offending fields + reasons
-    $messages = [];
-    foreach ($badFields as $field => $reasons) {
-        $messages[] = "$field: " . implode(', ', (array)$reasons);
-    }
+$errors = [];
+validateFields($data, $errors);
+validateCommonFields($data, $errors);
+if (!empty($errors)) {
     http_response_code(400);
     echo json_encode([
         "success" => 0,
-        "message" => "Invalid input detected (possible HTML/CSS/JS injection or invalid email).",
-        "details" => $messages
+        "message" => "Validation failed",
+        "details" => $errors
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }
