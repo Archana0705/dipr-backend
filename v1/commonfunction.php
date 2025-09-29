@@ -34,14 +34,14 @@ if (!$json_data && !empty($_POST)) {
 $encryptedData = $json_data['data'] ?? null;
 if (!$encryptedData) {
     http_response_code(400);
-    echo json_encode(["success" => 0, "message" => "Missing encrypted data"]);
+    //echo json_encode(["success" => 0, "message" => "Missing encrypted data"]);
     exit;
 }
 
 $data = decryptData($encryptedData);
 if (empty($data['action'])) {
     http_response_code(400);
-    echo json_encode(["success" => 0, "message" => "Action is required"]);
+    //echo json_encode(["success" => 0, "message" => "Action is required"]);
     exit;
 }
 
@@ -62,7 +62,7 @@ switch ($action) {
 
         if (!$functionName) {
             http_response_code(400);
-            echo json_encode(["success" => 0, "message" => "Function name is required"]);
+            //echo json_encode(["success" => 0, "message" => "Function name is required"]);
             exit;
         }
 
@@ -73,7 +73,7 @@ switch ($action) {
             $userId = $data['params']['user_id'] ?? null;
             if (!$userId) {
                 http_response_code(400);
-                echo json_encode(["success" => 0, "message" => "Missing user ID"]);
+                //echo json_encode(["success" => 0, "message" => "Missing user ID"]);
                 exit;
             }
 
@@ -330,5 +330,5 @@ switch ($action) {
 
     default:
         http_response_code(400);
-        echo json_encode(["success" => 0, "message" => "Invalid action"]);
+        //echo json_encode(["success" => 0, "message" => "Invalid action"]);
 }

@@ -94,7 +94,7 @@ if (isset($data['data'])) {
 // Validate required action/table early
 if (empty($data['action']) || empty($data['table'])) {
     http_response_code(400);
-    echo json_encode(["success" => 0, "message" => "Action and table name are required"]);
+    //echo json_encode(["success" => 0, "message" => "Action and table name are required"]);
     exit;
 }
 $errors = [];
