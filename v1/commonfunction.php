@@ -21,7 +21,28 @@ function respondServerError($message = "Internal server error", $httpCode = 500,
     echo json_encode(["success" => 0, "message" => $message]);
     exit;
 }
+function checkRateLimit($ip, $maxRequests = 1, $windowSeconds = 10) {
+    $key = "rate_limit_" . md5($ip);
+    $now = time();
+    
+    if (!isset($_SESSION[$key])) {
+        $_SESSION[$key] = [];
+    }
 
+    // Keep only requests within the time window
+    $_SESSION[$key] = array_filter($_SESSION[$key], fn($t) => ($t > $now - $windowSeconds));
+    $_SESSION[$key][] = $now;
+
+    if (count($_SESSION[$key]) > $maxRequests) {
+        http_response_code(429); // Too Many Requests
+        echo json_encode(["success" => 0, "message" => "Rate limit exceeded. Try later."]);
+        exit;
+    }
+}
+
+// Call at the top of your script
+
+checkRateLimit($_SERVER['REMOTE_ADDR']);
 // ==========================
 // Read Input
 // ==========================

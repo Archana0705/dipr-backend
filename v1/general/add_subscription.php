@@ -4,7 +4,29 @@ require_once('../../helper/db/dipr_write.php');
 
 header("Access-Control-Allow-Methods: POST");
 header("Content-Type: application/json");
+session_start();
+function checkRateLimit($ip, $maxRequests = 1, $windowSeconds = 10) {
+    $key = "rate_limit_" . md5($ip);
+    $now = time();
+    
+    if (!isset($_SESSION[$key])) {
+        $_SESSION[$key] = [];
+    }
 
+    // Keep only requests within the time window
+    $_SESSION[$key] = array_filter($_SESSION[$key], fn($t) => ($t > $now - $windowSeconds));
+    $_SESSION[$key][] = $now;
+
+    if (count($_SESSION[$key]) > $maxRequests) {
+        http_response_code(429); // Too Many Requests
+        echo json_encode(["success" => 0, "message" => "Rate limit exceeded. Try later."]);
+        exit;
+    }
+}
+
+// Call at the top of your script
+
+checkRateLimit($_SERVER['REMOTE_ADDR']);
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $user_name = trim($_POST['user_name'] ?? '');
     $email = trim($_POST['email_id'] ?? '');
@@ -94,8 +116,7 @@ $allowed_domains = [
             header("Retry-After: " . ($window - ($now - $data['start'])));
             echo json_encode([
                 "success" => 0,
-                "message" => "Too many requests for this email. Try again later.",
-                "retry_after_seconds" => $window - ($now - $data['start'])
+                "message" => "Too many requests for this email. Please Try later."
             ]);
             exit;
         }

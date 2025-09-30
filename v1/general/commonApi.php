@@ -5,7 +5,7 @@ require_once('../../helper/db/dipr_read.php');
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 error_reporting(E_ALL);
-
+session_start();
 function respondServerError($message = "Internal server error", $httpCode = 500, $exception = null) {
     if ($exception instanceof Exception) {
         error_log("DB ERROR: " . $exception->getMessage());
@@ -75,11 +75,6 @@ function validateCommonFields($data, &$errors = []) {
                 $errors[$key][] = 'Must be an integer of 10 digits';
             }
         }
-         if (stripos($key, 'sequence') !== false) {
-            if (!is_int($val) || $val < 1) {
-                $errors[$key][] = 'Must be integer ≥ 1';
-            }
-        }
     }
 }
 
@@ -109,6 +104,28 @@ if (!empty($errors)) {
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }
+function checkRateLimit($ip, $maxRequests = 1, $windowSeconds = 10) {
+    $key = "rate_limit_" . md5($ip);
+    $now = time();
+    
+    if (!isset($_SESSION[$key])) {
+        $_SESSION[$key] = [];
+    }
+
+    // Keep only requests within the time window
+    $_SESSION[$key] = array_filter($_SESSION[$key], fn($t) => ($t > $now - $windowSeconds));
+    $_SESSION[$key][] = $now;
+
+    if (count($_SESSION[$key]) > $maxRequests) {
+        http_response_code(429); // Too Many Requests
+        echo json_encode(["success" => 0, "message" => "Rate limit exceeded. Try later."]);
+        exit;
+    }
+}
+
+// Call at the top of your script
+
+checkRateLimit($_SERVER['REMOTE_ADDR']);
 
 // everything else: existing flow
 $action = trim($data['action']);
