@@ -225,9 +225,9 @@ switch ($action) {
                 }
 
                 // at this point loginResult must contain user_id
-                $currentSessionId = session_id();
+               
                 $userId = $loginResult['user_id'];
-
+                $currentSessionId = session_id();
                 if (!$userId) {
                     // treat as failed attempt (safer than returning Missing user ID immediately)
                     $_SESSION['login_attempts'] = ($_SESSION['login_attempts'] ?? 0) + 1;
@@ -258,9 +258,8 @@ switch ($action) {
                         "data" => encrypt($failData)
                     ]);
                     exit;
-                }
-
-                // Save/update session record
+                }else{
+        
                 $stmtInsert = $dipr_read_db->prepare("
                     INSERT INTO user_sessions (user_id, session_id, last_active)
                     VALUES (:uid, :sid, NOW())
@@ -288,6 +287,7 @@ switch ($action) {
                 exit;
             }
 
+        }
             // --------------------------
             // Non-scalar functions (normal queries)
             // --------------------------
