@@ -151,7 +151,6 @@ switch ($action) {
             }
             $sql .= " WHERE " . implode(" AND ", $whereClauses);
         }
-       $sql .= " LIMIT 20";
         try {
             $stmt = $dipr_read_db->prepare($sql);
             foreach ($filters as $key => $value) {
