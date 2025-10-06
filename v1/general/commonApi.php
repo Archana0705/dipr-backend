@@ -14,15 +14,7 @@ header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Access-Control-Allow-Methods: POST");
 header("Content-Type: application/json");
 session_start();
-print_r($_SESSION);
-// if (empty($_SESSION['user_id'])) {
-//     http_response_code(400);
-//     echo json_encode([
-//         'status' => 'error',
-//         'message' => 'User ID not found in session.'
-//     ]);
-//     exit;
-// }
+
 function respondServerError($message = "Internal server error", $httpCode = 500, $exception = null) {
     if ($exception instanceof Exception) {
         error_log("DB ERROR: " . $exception->getMessage());
@@ -100,7 +92,15 @@ $data = json_decode($jsonData, true) ?? $_POST;
 if (isset($data['data'])) {
     $data = decryptData($data['data']);
 }
-
+$stmtCheck = $dipr_read_db->prepare("SELECT session_id FROM user_sessions WHERE user_id = :uid");
+$stmtCheck->execute([':uid' => $data['user_id']]);
+$existingSession = $stmtCheck->fetchColumn();
+// Validate session
+if (empty($existingSession)) {
+    http_response_code(401);
+    // echo json_encode(["success" => 0, "message" => "Session invalid. Please log in again."]);
+    exit;
+}
 // Validate required action/table early
 if (empty($data['action']) || empty($data['table'])) {
     http_response_code(400);
@@ -140,7 +140,7 @@ function checkRateLimit($ip, $maxRequests = 1, $windowSeconds = 10) {
 
 // Call at the top of your script
 
-// checkRateLimit($_SERVER['REMOTE_ADDR']);
+checkRateLimit($_SERVER['REMOTE_ADDR']);
 
 // everything else: existing flow
 $action = trim($data['action']);
@@ -238,7 +238,7 @@ switch ($action) {
             }
         }
 
-        $excludedKeys = ['action', 'table', 'upload_type', 'file', 'primary_key'];
+        $excludedKeys = ['action', 'table', 'upload_type', 'file', 'primary_key','user_id'];
         $filteredData = array_diff_key($data, array_flip($excludedKeys));
 
         $columns = implode(", ", array_keys($filteredData));
