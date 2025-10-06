@@ -5,7 +5,24 @@ require_once('../../helper/db/dipr_read.php');
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 error_reporting(E_ALL);
+if (isset($_SERVER['HTTP_ORIGIN'])) {
+    header("Access-Control-Allow-Origin: " . $_SERVER['HTTP_ORIGIN']);
+}
+
+header("Access-Control-Allow-Credentials: true");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+header("Access-Control-Allow-Methods: POST");
+header("Content-Type: application/json");
 session_start();
+print_r($_SESSION);
+// if (empty($_SESSION['user_id'])) {
+//     http_response_code(400);
+//     echo json_encode([
+//         'status' => 'error',
+//         'message' => 'User ID not found in session.'
+//     ]);
+//     exit;
+// }
 function respondServerError($message = "Internal server error", $httpCode = 500, $exception = null) {
     if ($exception instanceof Exception) {
         error_log("DB ERROR: " . $exception->getMessage());
@@ -15,8 +32,6 @@ function respondServerError($message = "Internal server error", $httpCode = 500,
     exit;
 }
 
-header("Access-Control-Allow-Methods: POST");
-header("Content-Type: application/json");
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     http_response_code(405);
     echo json_encode([
@@ -125,7 +140,7 @@ function checkRateLimit($ip, $maxRequests = 1, $windowSeconds = 10) {
 
 // Call at the top of your script
 
-checkRateLimit($_SERVER['REMOTE_ADDR']);
+// checkRateLimit($_SERVER['REMOTE_ADDR']);
 
 // everything else: existing flow
 $action = trim($data['action']);

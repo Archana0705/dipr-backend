@@ -2,17 +2,21 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
 ini_set('log_errors', 1);
-session_start();
-
 require_once('../helper/header.php');
 require_once('../helper/db/dipr_read.php');
-
 header("Access-Control-Allow-Methods: POST");
 header("Content-Type: application/json");
+if (isset($_SERVER['HTTP_ORIGIN'])) {
+    header("Access-Control-Allow-Origin: " . $_SERVER['HTTP_ORIGIN']);
+}
 
+header("Access-Control-Allow-Credentials: true");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+session_start();
 // ==========================
 // Error Handling Helper
 // ==========================
+
 function respondServerError($message = "Internal server error", $httpCode = 500, $exception = null) {
     if ($exception instanceof Exception) {
         error_log("DB ERROR: " . $exception->getMessage());
@@ -299,10 +303,11 @@ switch ($action) {
                 $_SESSION['user_role'] = $loginResult['role'] ?? '';
                 $_SESSION['user_district'] = $loginResult['district'] ?? '';
                 $_SESSION['user_name'] = $loginResult['user_name'] ?? '';
-
+                $_SESSION['user_id'] = $userId ?? '';
+                // print_r($_SESSION);
                 echo json_encode([
                     "success" => 1,
-                    "message" => "Login successful",
+                    "message" => $_SESSION,
                     "data" => encrypt([$loginResult])
                 ]);
                 exit;
