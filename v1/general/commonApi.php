@@ -98,7 +98,6 @@ $existingSession = $stmtCheck->fetchColumn();
 // Validate session
 if (empty($existingSession)) {
     http_response_code(401);
-    // echo json_encode(["success" => 0, "message" => "Session invalid. Please log in again."]);
     exit;
 }
 // Validate required action/table early

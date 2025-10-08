@@ -82,7 +82,9 @@ function validateInputRecursive($data, &$badFields, $parentKey = '') {
 // Read input
 $jsonData = file_get_contents("php://input");
 $data = json_decode($jsonData, true);
-
+if (isset($data['data'])) {
+    $data = decryptData($data['data']);
+}
 if (empty($data['action'])) {
     http_response_code(400);
    // echo json_encode(["success" => 0, "message" => "Action is required"]);

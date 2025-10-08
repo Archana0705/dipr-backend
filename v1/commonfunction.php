@@ -16,7 +16,8 @@ session_start();
 // ==========================
 // Error Handling Helper
 // ==========================
-
+// $stmt = $dipr_read_db->prepare("TRUNCATE TABLE user_sessions");
+// $stmt->execute();
 function respondServerError($message = "Internal server error", $httpCode = 500, $exception = null) {
     if ($exception instanceof Exception) {
         error_log("DB ERROR: " . $exception->getMessage());
