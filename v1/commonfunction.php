@@ -307,7 +307,7 @@ switch ($action) {
                 // print_r($_SESSION);
                 echo json_encode([
                     "success" => 1,
-                    "message" => $_SESSION,
+                    "message" => "Login Successful",
                     "data" => encrypt([$loginResult])
                 ]);
                 exit;
