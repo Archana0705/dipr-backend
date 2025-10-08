@@ -13,11 +13,7 @@ if (isset($_SERVER['HTTP_ORIGIN'])) {
 header("Access-Control-Allow-Credentials: true");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 session_start();
-// ==========================
-// Error Handling Helper
-// ==========================
-// $stmt = $dipr_read_db->prepare("TRUNCATE TABLE user_sessions");
-// $stmt->execute();
+ 
 function respondServerError($message = "Internal server error", $httpCode = 500, $exception = null) {
     if ($exception instanceof Exception) {
         error_log("DB ERROR: " . $exception->getMessage());
@@ -43,37 +39,87 @@ function checkRateLimit($ip, $maxRequests = 1, $windowSeconds = 10) {
         echo json_encode(["success" => 0, "message" => "Rate limit exceeded. Try later."]);
         exit;
     }
-}
-
-// Call at the top of your script
-
+} 
 checkRateLimit($_SERVER['REMOTE_ADDR']);
-// ==========================
-// Read Input
-// ==========================
-$jsonData = file_get_contents("php://input");
-$json_data = json_decode($jsonData, true);
-if (!$json_data && !empty($_POST)) {
-    $json_data = $_POST;
-}
+ function containsForbiddenPattern($value, &$found = null) {
+    $found = [];
+    if (preg_match('/[<>&\'"]/', $value)) {
+        $found[] = 'forbidden characters < > & \' "';
+    }
 
-$encryptedData = $json_data['data'] ?? null;
-if (!$encryptedData) {
-    http_response_code(400);
-    //echo json_encode(["success" => 0, "message" => "Missing encrypted data"]);
-    exit;
-}
+    $patterns = [
+        '/<\s*script\b/i'                     => '<script>',
+        '/<\s*style\b/i'                      => '<style>',
+        '/on\w+\s*=/i'                        => 'event_handler (onclick, onerror, etc.)',
+        '/style\s*=/i'                         => 'style attribute',
+        '/javascript\s*:/i'                    => 'javascript: URI',
+        '/data\s*:/i'                           => 'data: URI',
+        '/expression\s*\(/i'                    => 'CSS expression()',
+        '/url\s*\(\s*["\']?\s*javascript\s*:/i'=> 'url(javascript:...)',
+        '/<\s*iframe\b/i'                      => '<iframe>',
+        '/<\s*svg\b/i'                         => '<svg>',
+        '/<\s*img\b[^>]*on\w+/i'               => 'img with on* handler',
+        '/<\s*meta\b/i'                        => '<meta>',
+        '/<\/\s*script\s*>/i'                  => '</script>',
+    ];
 
-$data = decryptData($encryptedData);
+    foreach ($patterns as $pat => $desc) {
+        if (preg_match($pat, $value)) {
+            $found[] = $desc;
+        }
+    }
+    return !empty($found);
+}
+function validateInputRecursive($data, &$badFields, $parentKey = '') {
+    if (is_array($data)) {
+        foreach ($data as $k => $v) {
+            $keyName = $parentKey === '' ? $k : ($parentKey . '.' . $k);
+            validateInputRecursive($v, $badFields, $keyName);
+        }
+        return;
+    }
+    if (!is_string($data)) return;
+
+    $value = $data;
+    $found = [];
+    if (containsForbiddenPattern($value, $found)) {
+        $badFields[$parentKey] = $found;
+    }
+}
+$inputData  = file_get_contents("php://input");
+$data = json_decode($inputData, true);
+if (!$data && !empty($_POST)) {
+    $data = $_POST;
+}
+if (isset($data['data'])) {
+    $data = decryptData($data['data']);
+}
+// $encryptedData = $data['data'] ?? null;
+// if (!$encryptedData) {
+//     http_response_code(400);
+//      exit;
+// }
+ 
 if (empty($data['action'])) {
     http_response_code(400);
-    //echo json_encode(["success" => 0, "message" => "Action is required"]);
+     exit;
+}
+ $badFields = [];
+validateInputRecursive($data, $badFields);
+
+if (!empty($badFields)) {
+    $messages = [];
+    foreach ($badFields as $field => $reasons) {
+        $messages[] = "$field: " . implode(', ', (array)$reasons);
+    }
+    http_response_code(400);
+    // echo json_encode([
+    //     "success" => 0,
+    //     "message" => "Invalid input detected (possible HTML/CSS/JS injection).",
+    //     "details" => $messages
+    // ]);
     exit;
 }
-
-// ==========================
-// Common variables
-// ==========================
 $action = $data['action'] ?? null;
 $limit = isset($data['limit']) && $data['limit'] !== null ? max(1, (int)$data['limit']) : null;
 $offset = $limit !== null ? (isset($data['offset']) ? max(0, (int)$data['offset']) : 0) : null;
@@ -88,19 +134,14 @@ switch ($action) {
 
         if (!$functionName) {
             http_response_code(400);
-            //echo json_encode(["success" => 0, "message" => "Function name is required"]);
-            exit;
+             exit;
         }
-
-        // --------------------------
-        // Logout handler
-        // --------------------------
+ 
         if ($functionName === 'user_logout') {
             $userId = $data['params']['user_id'] ?? null;
             if (!$userId) {
                 http_response_code(400);
-                //echo json_encode(["success" => 0, "message" => "Missing user ID"]);
-                exit;
+                 exit;
             }
 
             try {
@@ -116,10 +157,7 @@ switch ($action) {
             }
             exit;
         }
-
-        // --------------------------
-        // Rate limit setup for login
-        // --------------------------
+ 
         $scalarFunctions = ['user_login_fn', 'forget_password_fn'];
         $isLoginFn = ($functionName === 'user_login_fn');
 
@@ -195,14 +233,8 @@ switch ($action) {
             }
             $stmt->execute();
             $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            // --------------------------
-            // Special handling for login (scalar function)
-            // --------------------------
-            if (in_array($functionName, $scalarFunctions) && $functionName === 'user_login_fn') {
-                // Determine whether login succeeded:
-                // Acceptable success: $result[0]['result'] is JSON string containing user object with user_id,
-                // or it could be boolean true (string 'true') — handle both.
+ 
+            if (in_array($functionName, $scalarFunctions) && $functionName === 'user_login_fn') { 
                 $raw = $result[0]['result'] ?? null;
                 $loginResult = null;
                 if ($raw !== null) {
@@ -248,10 +280,7 @@ switch ($action) {
                         "data" => encrypt($failData)
                     ]);
                     exit;
-                }
-
-                // at this point loginResult must contain user_id
-               
+                }               
                 $userId = $loginResult['user_id'];
                 $currentSessionId = session_id();
                 if (!$userId) {
@@ -314,16 +343,12 @@ switch ($action) {
                 exit;
             }
 
-        }
-            // --------------------------
-            // Non-scalar functions (normal queries)
-            // --------------------------
+        } 
             if (!in_array($functionName, $scalarFunctions)) {
                 $response["data"] = encrypt($result);
 
                 if ($limit !== null) {
-                    // count total rows (best-effort; may not work for all DB functions)
-                    $countSql = "SELECT COUNT(*) as total FROM $functionName($placeholders)";
+                     $countSql = "SELECT COUNT(*) as total FROM $functionName($placeholders)";
                     $countStmt = $dipr_read_db->prepare($countSql);
                     foreach ($params as $key => $value) {
                         $paramType = is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR;
@@ -357,5 +382,4 @@ switch ($action) {
 
     default:
         http_response_code(400);
-        //echo json_encode(["success" => 0, "message" => "Invalid action"]);
-}
+ }
