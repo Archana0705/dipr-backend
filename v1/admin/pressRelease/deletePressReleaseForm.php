@@ -36,7 +36,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Get raw JSON input
         $jsonData = file_get_contents("php://input");
         $data = json_decode($jsonData, true); // Decode JSON into an associative array
-
+if (isset($data['data'])) {
+            $data = decryptData($data['data']);
+        }
+        if (empty($data['user_id'])) {
+            http_response_code(401);
+            exit;
+        }
+        if (!empty($data['user_id'])) {
+            $stmtCheck = $dipr_read_db->prepare("SELECT session_id FROM user_sessions WHERE user_id = :uid");
+            $stmtCheck->execute([':uid' => $data['user_id']]);
+            $existingSession = $stmtCheck->fetchColumn();
+            // Validate session
+            if (empty($existingSession)) {
+                http_response_code(401);
+                exit;
+            }
+        }
         // Validate JSON data (Ensure all required fields are present)
         if (!isset($data['ID'])) {
             http_response_code(400);
