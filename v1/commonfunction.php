@@ -13,7 +13,8 @@ if (isset($_SERVER['HTTP_ORIGIN'])) {
 header("Access-Control-Allow-Credentials: true");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 session_start();
- 
+//  $stmtTruncate = $dipr_read_db->prepare("TRUNCATE TABLE user_sessions");
+//     $stmtTruncate->execute();
 function respondServerError($message = "Internal server error", $httpCode = 500, $exception = null) {
     if ($exception instanceof Exception) {
         error_log("DB ERROR: " . $exception->getMessage());

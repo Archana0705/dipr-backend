@@ -1,6 +1,7 @@
 <?php
 require_once('../../helper/header.php');
 require_once('../../helper/db/dipr_read.php');
+require_once('../../helper/db/dipr_write.php');
 
 header("Access-Control-Allow-Methods: POST");
 header("Content-Type: application/json");
@@ -81,7 +82,8 @@ function validateInputRecursive($data, &$badFields, $parentKey = '') {
 
 // Read input
 $jsonData = file_get_contents("php://input");
-$data = json_decode($jsonData, true);
+$data = json_decode($jsonData, true) ?? $_POST;
+
 if (isset($data['data'])) {
     $data = decryptData($data['data']);
 }
@@ -127,64 +129,87 @@ switch ($action) {
         break;
 
     case 'insert':
-        $targetDir = "uploads/videos/tn_arangam/";
-        if (!is_dir($targetDir)) mkdir($targetDir, 0755, true);
+    $targetDir = __DIR__ . "/uploads/videos/tn_arangam/";
+    if (!is_dir($targetDir)) mkdir($targetDir, 0755, true);
 
-        $fileName = basename($_FILES["video"]["name"]);
-        $targetFilePath = $targetDir . $fileName;
-        $fileType = strtolower(pathinfo($targetFilePath, PATHINFO_EXTENSION));
-        $allowedFormats = ['mp4', 'avi', 'mov', 'mkv'];
-        $maxFileSize = 50 * 1024 * 1024;
+    // Check if file exists
+    if (empty($_FILES['video']['name'])) {
+        echo json_encode(["success" => 0, "message" => "No video file uploaded."]);
+        exit;
+    }
 
-        if ($_FILES["video"]["size"] > $maxFileSize) {
-            echo json_encode(["success" => 0, "message" => "File size exceeds 50MB."]);
-            exit;
-        }
+    $file = $_FILES['video'];
+    $fileName = basename($file["name"]);
+    $targetFilePath = $targetDir . $fileName;
 
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mimeType = finfo_file($finfo, $_FILES["video"]["tmp_name"]);
-        finfo_close($finfo);
+    // Validate file size
+    $maxFileSize = 50 * 1024 * 1024; // 50 MB
+    if ($file["size"] > $maxFileSize) {
+        echo json_encode(["success" => 0, "message" => "File size exceeds 50MB."]);
+        exit;
+    }
 
-        if (!in_array($mimeType, ['video/mp4','video/x-msvideo','video/quicktime','video/x-matroska'])) {
-            echo json_encode(["success" => 0, "message" => "Invalid file format."]);
-            exit;
-        }
+    // Validate MIME type
+    $allowedMimeTypes = ['video/mp4', 'video/x-msvideo', 'video/quicktime', 'video/x-matroska'];
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = finfo_file($finfo, $file["tmp_name"]);
+    finfo_close($finfo);
 
-        if (!move_uploaded_file($_FILES["video"]["tmp_name"], $targetFilePath)) {
-            echo json_encode(["success" => 0, "message" => "Error uploading video."]);
-            exit;
-        }
+    if (!in_array($mimeType, $allowedMimeTypes)) {
+        echo json_encode(["success" => 0, "message" => "Invalid file format."]);
+        exit;
+    }
 
-        $sql = "INSERT INTO $table (SLNO, ARANGAM, PLACE, CREATED_BY, CREATED_ON, UPDATED_BY, UPDATED_ON, DISTRICT, VIDEO_NAME, VIDEO_ATTACHMENT_NAME, MIME_TYPE, LANGUAGE) 
-                VALUES (:p_SLNO, :p_ARANGAM, :p_PLACE, :p_CREATED_BY, NOW(), :p_UPDATED_BY, NOW(), :p_DISTRICT, :p_VIDEO_NAME, :p_VIDEO_ATTACHMENT_NAME, :p_MIME_TYPE, :p_LANGUAGE)";
-        $params = [
-            ':p_SLNO' => $data['slno'],
-            ':p_ARANGAM' => $data['arangam'],
-            ':p_PLACE' => $data['place'],
-            ':p_CREATED_BY' => $data['created_by'],
-            ':p_UPDATED_BY' => $data['updated_by'],
-            ':p_DISTRICT' => $data['district'],
-            ':p_VIDEO_NAME' => $data['video_name'],
-            ':p_VIDEO_ATTACHMENT_NAME' => $fileName,
-            ':p_MIME_TYPE' => $mimeType,
-            ':p_LANGUAGE' => $data['language']
-        ];
+    // Move uploaded file
+    if (!move_uploaded_file($file["tmp_name"], $targetFilePath)) {
+        echo json_encode(["success" => 0, "message" => "Error uploading video."]);
+        exit;
+    }
 
-        try {
-            $stmt = $dipr_read_db->prepare($sql);
-            if ($stmt->execute($params)) {
-                http_response_code(201);
-                echo json_encode(["success" => 1, "message" => "Data inserted successfully"]);
-            } else {
-                http_response_code(500);
-                //echo json_encode(["success" => 0, "message" => "Database execution failed"]);
-            }
-        } catch (Exception $e) {
-            error_log("Error inserting data: " . $e->getMessage());
+    // Safe defaults for missing fields
+    $slno       = $data['slno'] ?? '';
+    $arangam    = $data['arangam'] ?? $data['monuments'] ?? '';
+    $place      = $data['place'] ?? '';
+    $created_by = $data['created_by'] ?? 'admin';
+    $updated_by = $data['updated_by'] ?? $created_by;
+    $district   = $data['district'] ?? '';
+    $video_name = $data['video_name'] ?? '';
+    $language   = $data['language'] ?? 'en';
+
+    // Prepare SQL
+    $sql = "INSERT INTO TN_ARANGAMS 
+            (SLNO, ARANGAM, PLACE, CREATED_BY, CREATED_ON, UPDATED_BY, UPDATED_ON, DISTRICT, VIDEO_NAME, VIDEO_ATTACHMENT_NAME, MIME_TYPE, LANGUAGE)
+            VALUES (:p_SLNO, :p_ARANGAM, :p_PLACE, :p_CREATED_BY, NOW(), :p_UPDATED_BY, NOW(), :p_DISTRICT, :p_VIDEO_NAME, :p_VIDEO_ATTACHMENT_NAME, :p_MIME_TYPE, :p_LANGUAGE)";
+
+    $params = [
+        ':p_SLNO' => $slno,
+        ':p_ARANGAM' => $arangam,
+        ':p_PLACE' => $place,
+        ':p_CREATED_BY' => $created_by,
+        ':p_UPDATED_BY' => $updated_by,
+        ':p_DISTRICT' => $district,
+        ':p_VIDEO_NAME' => $video_name,
+        ':p_VIDEO_ATTACHMENT_NAME' => $fileName,
+        ':p_MIME_TYPE' => $mimeType,
+        ':p_LANGUAGE' => $language
+    ];
+
+    try {
+        $stmt = $dipr_write_db->prepare($sql);
+        if ($stmt->execute($params)) {
+            http_response_code(201);
+            echo json_encode(["success" => 1, "message" => "Data inserted successfully"]);
+        } else {
             http_response_code(500);
-            echo json_encode(["success" => 0, "message" => "Internal server error"]);
+            echo json_encode(["success" => 0, "message" => "Database execution failed"]);
         }
-        break;
+    } catch (Exception $e) {
+        error_log("Error inserting data: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(["success" => 0, "message" => "Internal server error: " . $e->getMessage()]);
+    }
+    break;
+
 
     case 'update':
         if (empty($data[$primaryKey])) {
