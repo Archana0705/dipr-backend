@@ -182,7 +182,6 @@ switch ($action) {
             VALUES ( :p_ARANGAM, :p_PLACE, :p_CREATED_BY, NOW(), :p_UPDATED_BY, NOW(), :p_DISTRICT, :p_VIDEO_NAME, :p_VIDEO_ATTACHMENT_NAME, :p_MIME_TYPE, :p_LANGUAGE)";
 
     $params = [
-        ':p_SLNO' => $slno,
         ':p_ARANGAM' => $arangam,
         ':p_PLACE' => $place,
         ':p_CREATED_BY' => $created_by,
