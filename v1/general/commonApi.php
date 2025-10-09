@@ -92,14 +92,20 @@ $data = json_decode($jsonData, true) ?? $_POST;
 if (isset($data['data'])) {
     $data = decryptData($data['data']);
 }
-$stmtCheck = $dipr_read_db->prepare("SELECT session_id FROM user_sessions WHERE user_id = :uid");
-$stmtCheck->execute([':uid' => $data['user_id']]);
-$existingSession = $stmtCheck->fetchColumn();
-// Validate session
-if (empty($existingSession)) {
+if (empty($data['user_id'])) {
     http_response_code(401);
     exit;
-}
+    }
+        if (!empty($data['user_id'])) {
+        $stmtCheck = $dipr_read_db->prepare("SELECT session_id FROM user_sessions WHERE user_id = :uid");
+        $stmtCheck->execute([':uid' => $data['user_id']]);
+        $existingSession = $stmtCheck->fetchColumn();
+            // Validate session
+            if (empty($existingSession)) {
+            http_response_code(401);
+            exit;
+            }
+        }
 // Validate required action/table early
 if (empty($data['action']) || empty($data['table'])) {
     http_response_code(400);
@@ -345,6 +351,7 @@ switch ($action) {
         break;
  
     case 'delete':
+        
         if (empty($data[$primaryKey])) {
             http_response_code(400);
            // echo json_encode(["success" => 0, "message" => "Primary key is required"]);
