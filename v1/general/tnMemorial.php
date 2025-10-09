@@ -89,7 +89,23 @@ if (empty($data['action'])) {
  //   echo json_encode(["success" => 0, "message" => "Action is required"]);
     exit;
 }
-
+ if (isset($data['data'])) {
+            $data = decryptData($data['data']);
+        }
+        if (empty($data['user_id'])) {
+            http_response_code(401);
+            exit;
+        }
+        if (!empty($data['user_id'])) {
+            $stmtCheck = $dipr_read_db->prepare("SELECT session_id FROM user_sessions WHERE user_id = :uid");
+            $stmtCheck->execute([':uid' => $data['user_id']]);
+            $existingSession = $stmtCheck->fetchColumn();
+            // Validate session
+            if (empty($existingSession)) {
+                http_response_code(401);
+                exit;
+            }
+        }
 // ----------------------
 // Validate input to prevent injection
 // ----------------------

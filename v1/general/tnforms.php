@@ -81,7 +81,23 @@ function validateInputRecursive($data, &$badFields, $parentKey = '') {
 // Read input
 $jsonData = file_get_contents("php://input");
 $data = json_decode($jsonData, true);
-
+if (isset($data['data'])) {
+            $data = decryptData($data['data']);
+        }
+        if (empty($data['user_id'])) {
+            http_response_code(401);
+            exit;
+        }
+        if (!empty($data['user_id'])) {
+            $stmtCheck = $dipr_read_db->prepare("SELECT session_id FROM user_sessions WHERE user_id = :uid");
+            $stmtCheck->execute([':uid' => $data['user_id']]);
+            $existingSession = $stmtCheck->fetchColumn();
+            // Validate session
+            if (empty($existingSession)) {
+                http_response_code(401);
+                exit;
+            }
+        }
 if (empty($data['action'])) {
     http_response_code(400);
   //  echo json_encode(["success" => 0, "message" => "Action is required"]);
